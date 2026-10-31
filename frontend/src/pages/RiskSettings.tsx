@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, Json } from "../api";
 import { Card, ErrorBox, Loading } from "../components/ui";
-import { formatDateTime } from "../format";
+import { formatDateTime, parseDecimal } from "../format";
 import { useApi } from "../live";
 
 const GROUPS: [string, [string, string, string?][]][] = [
@@ -86,7 +86,7 @@ export default function RiskSettings() {
       </select>
     );
     return <input className="input num !w-32 text-right" value={String(v ?? "")}
-                  onChange={(e) => setValues({ ...values, [key]: e.target.value === "" ? "" : Number(e.target.value.replace(",", ".")) })} />;
+                  onChange={(e) => setValues({ ...values, [key]: parseDecimal(e.target.value) ?? e.target.value })} />;
   };
   return (
     <div className="space-y-4">

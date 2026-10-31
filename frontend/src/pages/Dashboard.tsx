@@ -112,13 +112,21 @@ export default function Dashboard({ dash, reload }: { dash: Json | null; reload:
               ))}
             </ul>
           </Card>
-          <Card title="Custo de ida e volta (US$ 10)">
-            <ul className="text-sm space-y-1">
-              {Object.entries(dash.round_trip_example as Record<string, number>).map(([chain, pct]) => (
-                <li key={chain} className="flex justify-between"><span>{chain}</span><span className="num">{formatPct(pct).replace("+", "")}</span></li>
-              ))}
-            </ul>
-            <p className="text-[11px] text-mute mt-2">Inclui taxa estimada da FOMO, pool, slippage e gás. Ajuste em Risco se a FOMO mostrar outra taxa.</p>
+          <Card title="Custos com US$ 10 por operação">
+            <table className="data">
+              <thead><tr><th>Rede</th><th>Ida e volta</th><th>Alvo 1 mínimo</th></tr></thead>
+              <tbody>
+                {Object.entries(dash.round_trip_example as Record<string, number>).map(([chain, pct]) => (
+                  <tr key={chain}><td>{chain}</td><td className="num">{formatPct(pct).replace("+", "")}</td>
+                    <td className="num text-warn">{formatPct(dash.min_target_example[chain]).replace("+", "")}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-[11px] text-mute mt-2">
+              Custos: taxa estimada da FOMO (com mínimo por ordem), pool, slippage e gás. "Alvo 1 mínimo" é a menor alta em 60 min
+              que passa nas regras de risco com esses custos — por isso "sem operação" é o resultado mais comum com valores pequenos.
+              Se a FOMO mostrar outra taxa na confirmação, ajuste em Risco.
+            </p>
           </Card>
           <Card title="Simulação (livro SIM)">
             <div className="text-sm space-y-1">

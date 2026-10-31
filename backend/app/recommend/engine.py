@@ -1,7 +1,7 @@
 """Ciclo de análise (spec 4.2): avalia o nível 2, compara oportunidades, aplica o Risk Manager e registra tudo."""
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -29,6 +29,8 @@ from app.strategy.registry import ALL_STRATEGIES
 
 log = logging.getLogger(__name__)
 HISTORY_WINDOW = timedelta(minutes=30)
+CANDLE_MAX_LAG = timedelta(minutes=15)  # 3 candles de 5 min
+SECURITY_MAX_AGE = timedelta(hours=6)
 
 
 def utcnow() -> datetime:
@@ -56,6 +58,8 @@ class Candidate:
     security: object
     manip: object
     evaluation_id: int
+    reliability: float
+    reports: list
 
 
 class AnalysisEngine:
@@ -72,6 +76,12 @@ class AnalysisEngine:
         self.last_trigger: str | None = None
         self.next_full_at: datetime | None = None
         self.state = "INICIANDO"
+        self.background_tasks: set[asyncio.Task] = set()
+
+    def _spawn(self, coro) -> None:
+        task = asyncio.get_running_loop().create_task(coro)
+        self.background_tasks.add(task)  # guarda a referência para a tarefa não ser descartada
+        task.add_done_callback(self.background_tasks.discard)
 
     # ---------- estado do livro ----------
     def _book(self, s, cfg: dict, limits: RiskLimits, now: datetime):
@@ -94,6 +104,18 @@ class AnalysisEngine:
                 if sig is not None:
                     out.append(sig)
         return out
+
+    @staticmethod
+    def _rebase(sig, price: float, max_run_pct: float):
+        """O preço observado é o snapshot atual, não o fechamento do último candle; stop e alvos são níveis e ficam."""
+        if price <= sig.stop:
+            return None, "Preço atual já está abaixo do stop do sinal"
+        run = (price / sig.price - 1) * 100
+        if run > max_run_pct:
+            return None, f"Preço atual {run:.2f}% acima do sinal: entrada perdida"
+        if price >= sig.target1:
+            return None, "Preço atual já passou do alvo 1"
+        return replace(sig, price=price, entry_low=price * 0.995, entry_high=price * 1.01), None
 
     # ---------- ciclo ----------
     async def run_cycle(self, kind: str = "quick", trigger: str = "agenda") -> CycleResult:
@@ -157,6 +179,7 @@ class AnalysisEngine:
             history = self.market.history(token.id, now - HISTORY_WINDOW)
             category = token.category or "intermediate"
             reports = await self.market.ensure_security(token, now) if kind == "full" else self.market.latest_security(token.id)
+            reports = [r for r in reports if now - r.observed_at <= SECURITY_MAX_AGE]
             verdict = evaluate_security(reports, CHAINS[Chain(token.chain)].family, category)
             manip = detect_manipulation(snap, history[:-1], category, min_liq)
             df = self.market.candles_df(token.id)
@@ -176,6 +199,22 @@ class AnalysisEngine:
                 category=category, df=add_indicators(df), snap=snap, history=history, now=now, classification=classification,
             )
             signals = self._run_strategies(ctx)
+            lag = now - (df.index[-1].to_pydatetime() + timedelta(minutes=5))
+            if signals and lag > CANDLE_MAX_LAG:
+                rejections += self._record_rejection(
+                    cycle_id, token, signals[0].strategy, category, snap.price_usd,
+                    [f"Candles desatualizados (último candle encerrado há {lag.total_seconds() / 60:.0f} min)"])
+                continue
+            rebased = []
+            for sig in signals:
+                new_sig, why = self._rebase(sig, snap.price_usd, float(cfg["rec.max_entry_run_pct"]))
+                if new_sig is None:
+                    rejections += self._record_rejection(cycle_id, token, sig.strategy, category, snap.price_usd, [why])
+                else:
+                    rebased.append(new_sig)
+            if signals and not rebased:
+                continue
+            signals = rebased
             if not signals:
                 if kind == "full":
                     reasons = verdict.blocks + manip.blocks or ["Nenhuma estratégia com condições de entrada"]
@@ -197,7 +236,7 @@ class AnalysisEngine:
                 if decision.status == "VETADA":
                     rejections += 1
                 else:
-                    candidates.append(Candidate(token, ctx, sig, score, decision, verdict, manip, ev_id))
+                    candidates.append(Candidate(token, ctx, sig, score, decision, verdict, manip, ev_id, rel, reports))
 
         created = await self._select_and_publish(candidates, cfg, limits, now)
         msg = NO_TRADE_MESSAGE if not created else f"{len(created)} recomendação(ões) emitida(s)"
@@ -218,7 +257,7 @@ class AnalysisEngine:
                     chain=Chain(c.token.chain), token_address=c.token.address, strategy=c.signal.strategy,
                     category=c.ctx.category, score=c.score.total, price=c.signal.price, stop=c.signal.stop,
                     target1=c.signal.target1, liquidity_usd=c.ctx.snap.liquidity_usd,
-                    data_reliability=c.decision.costs and 1.0 or 1.0, blocks=[],
+                    data_reliability=c.reliability, blocks=[],
                 )
                 decision = evaluate(proposal, book, limits, now)
                 if decision.status == "VETADA":
@@ -230,7 +269,7 @@ class AnalysisEngine:
                 payload = build_recommendation(
                     c.ctx, c.signal, c.score, decision, c.security, c.manip,
                     [{"fonte": c.ctx.snap.source, "horario": c.ctx.snap.observed_at},
-                     *[{"fonte": r, "horario": now} for r in c.security.sources]],
+                     *[{"fonte": r.source, "horario": r.observed_at} for r in c.reports]],
                     now,
                 )
                 text = render_text(payload)
@@ -332,11 +371,15 @@ class AnalysisEngine:
                     if tok.classification == "C":
                         blocks.append("Token reclassificado como C (evitar)")
                 history = self.market.history(token_id, now - timedelta(minutes=15))
-                blocks += detect_manipulation(snap, history[:-1], category).blocks
+                min_liq = {"established": cfg["market.min_liquidity_established"],
+                           "intermediate": cfg["market.min_liquidity_established"], "new": cfg["market.min_liquidity_new"]}
+                blocks += detect_manipulation(snap, history[:-1], category, min_liq).blocks
             reason = should_expire(rec, snap, now, blocks, int(cfg["data.max_price_age_s"]), float(cfg["rec.max_entry_run_pct"]))
             if reason:
                 with self.db.session() as s:
                     r = s.get(Recommendation, rec_id)
+                    if r.status != "ATIVA":  # executada ou ignorada enquanto avaliávamos
+                        continue
                     r.status, r.status_reason, r.status_changed_at = "EXPIRADA", reason, now
                     symbol = s.get(Token, token_id).symbol
                 expired += 1
@@ -370,6 +413,8 @@ class AnalysisEngine:
             if event is None:
                 continue
             labels = {"stop": "stop de referência atingido", "alvo1": "alvo 1 atingido", "tempo": "horizonte de 60 min encerrado"}
+            if ledger == "SIM" and (snap.liquidity_usd is None or is_stale(snap, now, int(cfg["data.max_price_age_s"]))):
+                continue  # sem liquidez ou preço atual não dá para estimar a saída: espera dado novo em vez de inventar
             if ledger == "SIM":
                 costs = estimate_costs(Chain(chain), amount, snap.liquidity_usd, cfg)
                 exit_price = price * (1 - (costs.slippage_pct + min(costs.impact_pct, 50)) / 100)
@@ -422,7 +467,7 @@ class AnalysisEngine:
                                    f"US$ {amount_usd:.2f} a {usd_price(price)}." + (f" Alertas: {'; '.join(flags)}" if flags else ""),
                                    severity="alta" if flags else "info")
         self.last_trigger = "execucao"
-        asyncio.get_running_loop().create_task(self.run_cycle("full", "execucao"))
+        self._spawn(self.run_cycle("full", "execucao"))
         return trade_id
 
     async def track_outcomes(self) -> int:

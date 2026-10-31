@@ -150,3 +150,14 @@ def test_risk_module_has_no_strategy_imports():
 def test_default_fomo_min_fee_vetoes_small_trades():
     d = evaluate(proposal(), book(), RiskLimits.from_settings(DEFAULT_RUNTIME), NOW)
     assert d.status == "VETADA" and any("custo" in r for r in d.reasons)
+
+
+def test_reliability_scales_size():
+    full = evaluate(proposal(), book(), LIMITS, NOW).amount_usd
+    half = evaluate(proposal(data_reliability=0.6), book(), LIMITS, NOW).amount_usd
+    assert half == 6.0 and full == 10.0
+
+
+def test_loss_factor_expires_with_pause_window():
+    old_losses = book(consecutive_losses=3, last_loss_at=NOW - timedelta(hours=3))
+    assert evaluate(proposal(), old_losses, LIMITS, NOW).amount_usd == evaluate(proposal(), book(), LIMITS, NOW).amount_usd

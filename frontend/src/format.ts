@@ -54,3 +54,13 @@ export function formatIn(iso: string | null | undefined, now = Date.now()): stri
   if (ms <= 0) return "agora";
   return formatAge(new Date(now - ms).toISOString(), now);
 }
+
+/** Converte texto digitado (vírgula ou ponto decimal, separador de milhar opcional) em número; inválido → null. */
+export function parseDecimal(text: string): number | null {
+  let t = text.trim().replace(/\s/g, "");
+  if (!t) return null;
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  if (!/^-?\d*\.?\d+(e-?\d+)?$/i.test(t)) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}

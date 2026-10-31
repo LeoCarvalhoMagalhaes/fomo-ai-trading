@@ -235,3 +235,120 @@ async def test_full_cycle_does_not_fetch_candles():
     market._candles_at.clear()  # candles vencidos: só a tarefa contínua deve buscá-los
     await engine.run_cycle("full", "teste")
     assert calls == []
+
+
+async def test_reliability_carried_to_final_sizing():
+    db, market, engine, *_ = await build([AlwaysBuy()])
+    import app.recommend.engine as eng
+    seen = []
+    original_rel, original_eval = eng.reliability, eng.evaluate
+
+    def spy(proposal, *a, **k):
+        seen.append(proposal.data_reliability)
+        return original_eval(proposal, *a, **k)
+
+    eng.reliability, eng.evaluate = (lambda *a, **k: 0.8), spy
+    try:
+        await engine.run_cycle("full", "teste")
+    finally:
+        eng.reliability, eng.evaluate = original_rel, original_eval
+    assert len(seen) == 2 and all(v == 0.8 for v in seen)  # avaliação inicial e reavaliação final
+
+
+async def test_stale_candles_do_not_produce_recommendation():
+    db, market, engine, dex, gecko = await build([AlwaysBuy()])
+    from app.db.models import Candle as CandleRow
+    with db.session() as s:
+        for c in s.scalars(select(CandleRow)):
+            c.ts = c.ts - timedelta(hours=2)
+    result = await engine.run_cycle("full", "teste")
+    assert result.recommendations == 0
+    with db.session() as s:
+        ev = s.scalars(select(Evaluation).where(Evaluation.decision == "REJEITADA")).first()
+    assert any("desatualizados" in r for r in ev.reasons)
+
+
+class BuyAtClose(AlwaysBuy):
+    name = "teste_fechamento"
+
+    def evaluate(self, ctx):
+        price = float(ctx.df["close"].iloc[-1])  # como as estratégias reais: fechamento do candle
+        return self.make_signal(price, price * 0.9, "teste", ["sinal sintético de teste"])
+
+
+async def test_observed_price_is_fresh_snapshot_not_candle_close():
+    db, market, engine, dex, _ = await build([BuyAtClose()])
+    dex.price = 0.985  # candles fecham em 0,979; o preço atual (+0,6%) vem do snapshot
+    await market.refresh_tier1()
+    await engine.run_cycle("full", "teste")
+    with db.session() as s:
+        rec = s.scalars(select(Recommendation)).one()
+    assert rec.price_observed == 0.985
+
+
+async def test_security_source_time_is_report_time():
+    db, market, engine, *_ = await build([AlwaysBuy()])
+    await engine.run_cycle("full", "teste")
+    with db.session() as s:
+        rec = s.scalars(select(Recommendation)).one()
+    fontes = {f["fonte"]: f["horario"] for f in rec.payload["fontes"]}
+    reports = {r.source: r.observed_at.isoformat() for r in market.latest_security(rec.token_id)}
+    assert fontes["goplus"] == reports["goplus"]
+
+
+async def test_sim_close_deferred_without_liquidity():
+    db, market, engine, dex, _ = await build([AlwaysBuy()])
+    await engine.run_cycle("full", "teste")
+    original = dex.tokens
+
+    async def no_liq(chain, addresses):
+        snaps = await original(chain, addresses)
+        for s in snaps:
+            s.liquidity_usd = None
+            s.price_usd = 0.85
+        return snaps
+
+    dex.tokens = no_liq
+    await market.refresh_tier1()
+    await engine.monitor_positions()
+    with db.session() as s:
+        trade = s.scalars(select(Trade)).one()
+    assert trade.status == "OPEN"
+
+
+async def test_expiry_does_not_overwrite_executed_status():
+    db, market, engine, *_ = await build([AlwaysBuy()])
+    await engine.run_cycle("full", "teste")
+    original = market.latest_snapshot
+
+    def racing(token_id, s=None):
+        with db.session() as sess:
+            for r in sess.scalars(select(Recommendation)):
+                r.status = "EXECUTADA"
+        return None  # sem dados → expiraria
+
+    market.latest_snapshot = racing
+    await engine.expire_recommendations()
+    market.latest_snapshot = original
+    with db.session() as s:
+        assert s.scalars(select(Recommendation)).one().status == "EXECUTADA"
+
+
+async def test_expiry_uses_configured_liquidity_thresholds():
+    db, market, engine, *_ = await build([AlwaysBuy()])
+    await engine.run_cycle("full", "teste")
+    # liquidez de US$ 2 mi passa no padrão (50 mil), mas não no limite configurado pelo usuário
+    engine.runtime.set("market.min_liquidity_established", 3_000_000, actor="teste")
+    await engine.expire_recommendations()
+    with db.session() as s:
+        rec = s.scalars(select(Recommendation)).one()
+    assert rec.status == "EXPIRADA" and "Liquidez" in rec.status_reason
+
+
+async def test_execution_cycle_task_is_kept():
+    db, market, engine, *_ = await build([AlwaysBuy()])
+    await engine.run_cycle("full", "teste")
+    with db.session() as s:
+        rec_id = s.scalars(select(Recommendation.id)).one()
+    await engine.report_execution(rec_id, price=1.0, amount_usd=6.0, fee_usd=0.5, executed_at=now())
+    assert len(engine.background_tasks) == 1

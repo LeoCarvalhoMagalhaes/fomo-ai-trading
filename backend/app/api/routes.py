@@ -19,6 +19,7 @@ from app.recommend.format import NO_TRADE_MESSAGE
 from app.risk.manager import RiskLimits
 from app.security.rules import evaluate_security
 from app.strategy.indicators import add_indicators
+from app.strategy.base import TARGET1_R
 from app.strategy.registry import ALL_STRATEGIES
 
 router = APIRouter(prefix="/api")
@@ -155,6 +156,13 @@ def sim_observation(request: Request) -> dict:
             "Use o modo REAL só depois de avaliar os resultados simulados."}
 
 
+def min_target_pct(cost_pct: float, cfg: dict) -> float:
+    """Menor alvo 1 (%) que passa nas regras de custo do Risk Manager, dado o alvo em TARGET1_R × risco."""
+    k, rr, m = TARGET1_R, float(cfg["rec.min_net_rr"]), float(cfg["rec.min_target_cost_multiple"])
+    stop = cost_pct * max(m, (1 + rr) / (k - rr) if k > rr else float("inf"), (m + 1) / k)
+    return k * stop
+
+
 @router.get("/dashboard")
 def dashboard(request: Request):
     st = request.app.state
@@ -187,6 +195,7 @@ def dashboard(request: Request):
                            .order_by(desc(Notification.created_at)).limit(10)).all()
         last_cycle = s.scalars(select(Cycle).where(Cycle.finished_at.is_not(None)).order_by(desc(Cycle.id)).limit(1)).first()
     regime = st.market.market_regime(now)
+    round_trips = {chain.value: estimate_costs(chain, cfg["risk.established_max_usd"], 1_000_000, cfg).round_trip_pct for chain in Chain}
     message = NO_TRADE_MESSAGE if best is None else None
     if st.engine.state == "BLOQUEADO" and last_cycle is not None:
         message = last_cycle.message
@@ -211,9 +220,8 @@ def dashboard(request: Request):
         "tiers": st.market.tier_counts,
         "message": message,
         "observation": sim_observation(request),
-        "round_trip_example": {
-            chain.value: estimate_costs(chain, cfg["risk.established_max_usd"], 1_000_000, cfg).round_trip_pct for chain in Chain
-        },
+        "round_trip_example": round_trips,
+        "min_target_example": {c: min_target_pct(v, cfg) for c, v in round_trips.items()},
     })
 
 
@@ -552,7 +560,7 @@ async def resume(request: Request):
 
 @router.post("/control/scan")
 async def scan(request: Request):
-    asyncio.get_running_loop().create_task(request.app.state.engine.run_cycle("full", "manual"))
+    request.app.state.engine._spawn(request.app.state.engine.run_cycle("full", "manual"))
     return {"started": True}
 
 

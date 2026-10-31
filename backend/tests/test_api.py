@@ -38,6 +38,9 @@ def test_dashboard_shape(client):
     assert d["capital"] == 50 and d["mode"] == "SIM"
     assert d["books"]["SIM"]["available"] == 50
     assert d["message"].startswith("SEM OPERAÇÃO RECOMENDADA")
+    # alvo mínimo exigido pelas regras = 6,25× o custo (stop ≥ 2,5× custo e alvo em 2,5R)
+    sol = d["min_target_example"]["solana"]
+    assert abs(sol - 6.25 * d["round_trip_example"]["solana"]) < 1e-6
 
 
 def test_execute_triggers_full_cycle(client):
@@ -103,3 +106,10 @@ def test_stats_shape(client):
     st = client.get("/api/stats").json()
     assert {"SIM", "REAL", "filtros", "backtest", "estrategias"} <= set(st)
     assert len(st["estrategias"]) == 6
+
+
+def test_cross_origin_post_rejected(client):
+    r = client.post("/api/control/pause", headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403
+    assert client.post("/api/control/pause", headers={"Origin": "http://127.0.0.1:8765"}).status_code == 200
+    assert client.post("/api/control/resume").status_code == 200  # sem Origin (ferramentas locais)

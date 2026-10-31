@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, Json } from "../api";
 import { Badge, Card, CATEGORY_LABEL, DataTable, Empty, ErrorBox, Field, Loading, Modal, Stat } from "../components/ui";
-import { formatAge, formatPct, formatPrice, formatUsd } from "../format";
+import { formatAge, formatPct, formatPrice, formatUsd, parseDecimal } from "../format";
 import { useApi } from "../live";
 
 const CHAINS = ["solana", "base", "bsc", "ethereum", "monad", "robinhood"];
@@ -13,7 +13,9 @@ function NewTradeModal({ ledger, onClose, onDone }: { ledger: string; onClose: (
   const submit = async () => {
     setErr(null);
     try {
-      await api.post("/trades", { ledger, ...f, amount_usd: Number(f.amount_usd), price: Number(f.price), fee_usd: Number(f.fee_usd) });
+      const a = parseDecimal(f.amount_usd), p = parseDecimal(f.price), fee = parseDecimal(f.fee_usd);
+      if (a === null || p === null || fee === null) throw new Error("Valor, preço e taxa precisam ser números (vírgula ou ponto).");
+      await api.post("/trades", { ledger, ...f, amount_usd: a, price: p, fee_usd: fee });
       onDone();
       onClose();
     } catch (e) {
@@ -45,7 +47,9 @@ function CloseModal({ trade, onClose, onDone }: { trade: Json; onClose: () => vo
   const [err, setErr] = useState<string | null>(null);
   const submit = async () => {
     try {
-      await api.post(`/trades/${trade.id}/close`, { price: Number(price), fee_usd: Number(fee) });
+      const p = parseDecimal(price), f = parseDecimal(fee);
+      if (p === null || f === null) throw new Error("Preço e taxa precisam ser números (vírgula ou ponto).");
+      await api.post(`/trades/${trade.id}/close`, { price: p, fee_usd: f });
       onDone();
       onClose();
     } catch (e) {

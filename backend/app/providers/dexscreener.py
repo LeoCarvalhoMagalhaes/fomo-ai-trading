@@ -59,7 +59,7 @@ def parse_tokens(data: list, observed_at: datetime) -> list[PairSnapshot]:
     for p in data or []:
         try:
             snap = _parse_pair(p, observed_at)
-        except (KeyError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
             log.warning("par da DexScreener descartado: %s", exc)
             continue
         if snap is not None:

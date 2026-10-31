@@ -153,7 +153,12 @@ def evaluate(p: TradeProposal, book: BookState, limits: RiskLimits, now: datetim
     is_new = p.category == "new"
     cat_min = limits.new_min_usd if is_new else limits.established_min_usd
     cat_max = limits.new_max_usd if is_new else limits.established_max_usd
-    loss_factor = max(0.5, 1 - 0.2 * book.consecutive_losses)  # nunca aumenta depois de perdas
+    recent_losses = (
+        book.consecutive_losses
+        if book.last_loss_at is not None and now - book.last_loss_at < timedelta(hours=limits.loss_streak_pause_hours)
+        else 0
+    )
+    loss_factor = max(0.5, 1 - 0.2 * recent_losses)  # reduz depois de perdas recentes; nunca aumenta para recuperar
     desired = cat_max * quality_factor(p.score) * min(1.0, max(0.0, p.data_reliability)) * loss_factor
 
     caps = {

@@ -8,8 +8,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
@@ -87,6 +87,15 @@ def create_app(start_background: bool = True, db_url: str | None = None, setting
         await client.aclose()
 
     app = FastAPI(title="FOMO AI Trading Intelligence", lifespan=lifespan)
+    allowed_origins = {f"http://{h}:{p}" for h in ("127.0.0.1", "localhost") for p in (settings.port, 5320)}
+
+    @app.middleware("http")
+    async def same_origin_only(request: Request, call_next):
+        # Impede que outras páginas abertas no navegador alterem dados locais (CSRF)
+        origin = request.headers.get("origin")
+        if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin not in allowed_origins:
+            return JSONResponse({"detail": "Origem não permitida"}, status_code=403)
+        return await call_next(request)
     app.state.settings = settings
     app.state.db = db
     app.state.runtime = runtime
@@ -99,6 +108,10 @@ def create_app(start_background: bool = True, db_url: str | None = None, setting
 
     @app.websocket("/ws")
     async def websocket(sock: WebSocket):
+        origin = sock.headers.get("origin")
+        if origin and origin not in allowed_origins:
+            await sock.close(code=1008)
+            return
         await ws.connect(sock)
         try:
             while True:

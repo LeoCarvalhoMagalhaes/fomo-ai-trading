@@ -1,20 +1,32 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, Json } from "../api";
-import { formatAge, formatIn, formatPct, formatPrice, formatUsd } from "../format";
+import { formatAge, formatIn, formatPct, formatPrice, formatUsd, parseDecimal } from "../format";
+
+function localNow(): string {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
 import { Badge, Field, Modal, ScoreBar, STATUS_LABEL, toneForStatus } from "./ui";
 
 export function ExecuteModal({ rec, onClose, onDone }: { rec: Json; onClose: () => void; onDone: () => void }) {
   const [price, setPrice] = useState(String(rec.price_observed));
   const [amount, setAmount] = useState(String(rec.amount_usd));
-  const [fee, setFee] = useState("0");
+  const [fee, setFee] = useState("");
+  const [when, setWhen] = useState(localNow());
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const submit = async () => {
+    const p = parseDecimal(price), a = parseDecimal(amount), f = parseDecimal(fee);
+    if (p === null || p <= 0 || a === null || a <= 0 || f === null || f < 0) {
+      setErr("Preencha preço, valor e taxa com números válidos (vírgula ou ponto).");
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
-      await api.post(`/recommendations/${rec.id}/executed`, { price: Number(price), amount_usd: Number(amount), fee_usd: Number(fee) });
+      await api.post(`/recommendations/${rec.id}/executed`, { price: p, amount_usd: a, fee_usd: f, executed_at: new Date(when).toISOString() });
       onDone();
       onClose();
     } catch (e) {
@@ -28,7 +40,8 @@ export function ExecuteModal({ rec, onClose, onDone }: { rec: Json; onClose: () 
       <p className="text-xs text-mute mb-3">Informe os valores exatamente como a FOMO mostrou. A operação vai para o livro REAL e uma nova varredura começa na hora.</p>
       <Field label="Preço executado (US$)"><input className="input num" value={price} onChange={(e) => setPrice(e.target.value)} /></Field>
       <Field label="Valor investido (US$)"><input className="input num" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
-      <Field label="Taxa cobrada pela FOMO (US$)"><input className="input num" value={fee} onChange={(e) => setFee(e.target.value)} /></Field>
+      <Field label="Taxa cobrada pela FOMO (US$)" hint="Obrigatória: a FOMO mostra a taxa na tela de confirmação."><input className="input num" value={fee} placeholder="ex.: 0,50" onChange={(e) => setFee(e.target.value)} /></Field>
+      <Field label="Horário da execução"><input type="datetime-local" className="input" value={when} onChange={(e) => setWhen(e.target.value)} /></Field>
       {err && <div className="text-down text-sm mb-2">{err}</div>}
       <div className="flex justify-end gap-2">
         <button className="btn" onClick={onClose}>Cancelar</button>

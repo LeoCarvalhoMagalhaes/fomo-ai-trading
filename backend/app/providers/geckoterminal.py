@@ -81,7 +81,7 @@ def parse_pools(data: dict, chain: Chain, observed_at: datetime) -> list[PairSna
     for item in (data or {}).get("data") or []:
         try:
             out.append(_parse_pool(item, chain, observed_at))
-        except (KeyError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
             log.warning("pool do GeckoTerminal descartado: %s", exc)
     return out
 

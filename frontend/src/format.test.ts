@@ -52,3 +52,14 @@ describe("formatIn", () => {
     expect(formatIn("2026-10-31T11:59:00Z", now)).toBe("agora");
   });
 });
+
+describe("parseDecimal", () => {
+  it("aceita vírgula e ponto e rejeita texto inválido", async () => {
+    const { parseDecimal } = await import("./format");
+    expect(parseDecimal("0,5")).toBe(0.5);
+    expect(parseDecimal("1.234,56")).toBe(1234.56);
+    expect(parseDecimal("0.00001187")).toBe(0.00001187);
+    expect(parseDecimal("abc")).toBeNull();
+    expect(parseDecimal("")).toBeNull();
+  });
+});

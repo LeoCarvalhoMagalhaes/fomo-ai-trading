@@ -58,3 +58,10 @@ async def test_tokens_batches_by_30():
         snaps = await dex.tokens(Chain.solana, [f"A{i}" for i in range(31)])
     assert route.call_count == 2
     assert len(snaps) == 2
+
+
+def test_malformed_pair_is_skipped_not_fatal():
+    good = load_fixture("dexscreener_tokens_bonk.json")[0]
+    bad = copy.deepcopy(good)
+    bad["txns"] = {"m5": None}
+    assert len(parse_tokens([bad, good], NOW)) == 1
