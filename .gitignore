@@ -10,3 +10,4 @@ frontend/dist/
 *.db-wal
 *.db-shm
 .superpowers/
+*.log
