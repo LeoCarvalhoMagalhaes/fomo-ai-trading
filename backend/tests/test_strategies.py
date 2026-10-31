@@ -52,7 +52,8 @@ def test_pullback_positive():
     assert sig is not None
     assert sig.stop < 100.5 < sig.target1 < sig.target2
     r = 100.5 - sig.stop
-    assert abs(sig.target1 - (100.5 + 1.5 * r)) < 1e-9
+    assert abs(sig.target1 - (100.5 + 2.5 * r)) < 1e-9
+    assert abs(sig.target2 - (100.5 + 4.0 * r)) < 1e-9
 
 
 def test_pullback_rsi_falling_rejected():

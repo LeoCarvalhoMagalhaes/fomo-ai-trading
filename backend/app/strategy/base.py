@@ -10,6 +10,9 @@ HORIZON = "Até 60 minutos"
 DEFAULT_EXIT = "Vender no alvo 1 (ou parcial no alvo 1 e restante no alvo 2), no stop de referência ou ao fim de 60 min, o que vier primeiro"
 ENTRY_BELOW = 0.005
 ENTRY_ABOVE = 0.01
+# Alvos em múltiplos do risco (R = preço − stop). 2,5R permite R:R líquido ≥ 1,5 quando o stop é ≥ 2,5× o custo.
+TARGET1_R = 2.5
+TARGET2_R = 4.0
 
 
 @dataclass
@@ -72,8 +75,8 @@ class Strategy:
             entry_low=price * (1 - ENTRY_BELOW),
             entry_high=price * (1 + ENTRY_ABOVE),
             stop=stop,
-            target1=price + 1.5 * r,
-            target2=price + 2.5 * r,
+            target1=price + TARGET1_R * r,
+            target2=price + TARGET2_R * r,
             entry_condition=entry_condition,
             invalidation=self.invalidation,
             rationale=rationale,

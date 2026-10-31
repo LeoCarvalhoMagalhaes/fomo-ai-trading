@@ -61,7 +61,7 @@ def build_recommendation(
 ) -> dict:
     chain = Chain(ctx.token.get("chain", ctx.snap.chain))
     up, down = pct_moves(signal)
-    strategy = BY_NAME[signal.strategy]
+    strategy = BY_NAME.get(signal.strategy)
     loss_usd = decision.amount_usd * down / 100 + (decision.costs.round_trip_usd if decision.costs else 0)
     return {
         "token": ctx.token.get("symbol") or ctx.snap.symbol,
@@ -72,7 +72,7 @@ def build_recommendation(
         "tipo": CATEGORY_LABELS[ctx.category],
         "direcao": "Compra",
         "estrategia": signal.strategy,
-        "estrategia_nome": strategy.title,
+        "estrategia_nome": strategy.title if strategy else signal.strategy,
         "preco_observado": signal.price,
         "valor_sugerido": decision.amount_usd,
         "horizonte": HORIZON,

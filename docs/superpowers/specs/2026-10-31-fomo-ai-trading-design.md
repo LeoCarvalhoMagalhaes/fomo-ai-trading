@@ -166,10 +166,10 @@ Volume Profile não é implementado porque os provedores gratuitos não dão vol
 Cada uma declara entrada, invalidação, saída, indicadores e limitações em `describe()`.
 
 1. **established_pullback** (estabelecidos): EMA20 > EMA50; preço recua até ±0,5 ATR da EMA20;
-   RSI 40–55 subindo. Stop: mínima dos últimos 6 candles − 0,25 ATR. Alvos 1,5R e 2,5R.
+   RSI 40–55 subindo. Stop: mínima dos últimos 6 candles − 0,25 ATR. Alvos 2,5R e 4R.
    Limitação: falha em reversões rápidas de tendência.
 2. **uptrend_momentum**: EMA9 > EMA21 > EMA50; histograma MACD > 0 e crescendo há 2 candles; RSI 55–70;
-   preço > VWAP. Stop 1,5 ATR. Alvos 1,5R/2,5R. Limitação: entra tarde em movimentos curtos.
+   preço > VWAP. Stop 1,5 ATR. Alvos 2,5R/4R. Limitação: entra tarde em movimentos curtos.
 3. **breakout_retest**: fechamento acima da máxima de 24 candles com volume relativo ≥ 2 e o candle
    seguinte reteste o nível sem fechar abaixo. Stop: nível − 0,5 ATR. Limitação: rompimentos falsos.
 4. **reversal_confirmed** (só estabelecidos): divergência de alta no RSI nos últimos 12 candles,
@@ -177,7 +177,7 @@ Cada uma declara entrada, invalidação, saída, indicadores e limitações em `
    0,25 ATR. Limitação: tendência de baixa forte invalida.
 5. **new_token_momentum** (só novos classe A): idade 30 min–72 h; compras/vendas 5 min entre 1,2 e
    3; transações 5 min ≥ média de 5 min da última hora; alta desde o lançamento ≤ 3×; liquidez sem
-   queda. Stop: máx(12%, 1,5 ATR). Alvos 1,5R/2,5R. Valor máximo US$ 5.
+   queda. Stop: máx(12%, 1,5 ATR). Alvos 2,5R/4R. Valor máximo US$ 5.
 6. **abnormal_volume**: volume relativo ≥ 3, candle de alta, compras > vendas, liquidez estável,
    preço ainda ≤ 1 ATR acima da abertura do candle de volume. Stop: mínima do candle de volume.
 
