@@ -57,3 +57,21 @@ Em *Estatísticas → Rodar backtest*, ou pelo terminal com `backend\.venv\Scrip
 - Aplica custos completos e divide os dados em ordem temporal: 60% treino, 20% validação e 20% teste.
 - Estratégias que dependem do fluxo de compras e vendas não entram, porque os candles não trazem esse dado.
 - A calibração "nota → probabilidade" só aparece com pelo menos 200 resultados no conjunto de teste. Até lá, toda recomendação mostra "Sem estimativa confiável".
+
+## Teste prolongado (31/10/2026)
+
+App rodando com provedores reais por 75 min (14:44–15:59 UTC), com uma checagem a cada 5 min.
+
+| Item | Resultado |
+|---|---|
+| Estado do sistema | OPERANDO em todas as 15 checagens |
+| Erros do agendador | 0 |
+| Linhas ERROR/CRITICAL no log | 0 |
+| Avisos (WARNING) | 39, sendo 18 por HTTP 429 do GeckoTerminal e o restante sobre falta de dados de segurança |
+| Ciclos completos de análise | 1 por hora, sem sobreposição; ciclos rápidos a cada 2 min |
+| Tokens no nível 1 / nível 2 | 236 / 20 |
+| Recomendações emitidas | 0 |
+
+Os avisos de 429 são esperados: a API gratuita do GeckoTerminal às vezes recusa chamadas mesmo abaixo de 6/min. O app espera o tempo de backoff e tenta de novo. Nenhum preço ficou desatualizado a ponto de bloquear o sistema.
+
+O resultado de zero recomendações também é esperado. As estratégias dispararam, mas todos os sinais foram vetados por nota abaixo de 80 ou porque os custos de operar US$ 5–10 (taxa mínima de US$ 0,50 por lado) exigem alvos fora do alcance. O dashboard mostra o alvo mínimo que vale a pena com o capital configurado.
