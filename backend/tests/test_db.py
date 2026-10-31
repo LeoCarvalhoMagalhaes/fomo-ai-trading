@@ -51,3 +51,20 @@ def test_candle_unique_constraint():
         rows = s.scalars(select(CandleRow)).all()
     assert len(rows) == 1
     assert rows[0].close == 2.5
+
+
+def test_duplicate_timestamps_in_one_batch_keep_the_last_candle():
+    """O GeckoTerminal às vezes repete o horário de um candle; o Postgres recusa duas linhas iguais no mesmo upsert."""
+    db = make_db()
+    ts = datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc)
+    with db.session() as s:
+        tok = Token(chain="solana", address="Y", symbol="Y", name="Y")
+        s.add(tok)
+        s.flush()
+        tid = tok.id
+    first = Candle(ts=ts, open=1, high=2, low=0.5, close=1.5, volume=10)
+    last = Candle(ts=ts, open=1, high=3, low=0.5, close=2.5, volume=20)
+    assert db.upsert_candles(tid, "5m", [first, last], source="geckoterminal") == 1
+    with db.session() as s:
+        rows = s.scalars(select(CandleRow).where(CandleRow.token_id == tid)).all()
+    assert [r.close for r in rows] == [2.5]

@@ -77,5 +77,6 @@ class Scheduler:
             prune_old_data, self.market.db, datetime.now(timezone.utc),
             float(rt.get("data.retention_snapshots_hours")), float(rt.get("data.retention_candles_days")),
             float(rt.get("data.retention_logs_days")))
+        self.market.forget_stale_tokens()
         if any(removed.values()):
             log.info("limpeza de dados antigos: %s", removed)

@@ -59,6 +59,8 @@ class Database:
     def upsert_candles(self, token_id: int, tf: str, candles: list[Candle], source: str) -> int:
         if not candles:
             return 0
+        # Horários repetidos no mesmo lote: fica o último (o Postgres recusa a mesma linha duas vezes num upsert)
+        candles = list({c.ts: c for c in candles}.values())
         rows = [
             {"token_id": token_id, "tf": tf, "ts": c.ts, "open": c.open, "high": c.high, "low": c.low,
              "close": c.close, "volume": c.volume, "source": source}

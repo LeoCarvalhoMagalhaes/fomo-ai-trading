@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.chains import Chain
 from app.db.models import Candle as CandleRow, Event, SecurityReportRow, Snapshot, Token
@@ -37,6 +37,10 @@ def utcnow() -> datetime:
 # Preços recentes guardados na memória: o banco online cobra tráfego de saída, e o ciclo rápido lê os mesmos
 # snapshots a cada minuto. Cobre a janela de histórico das estratégias (30 min) e a apuração de resultados (60 min).
 RECENT_WINDOW = timedelta(minutes=90)
+# Tokens vistos nas últimas 24 h ficam na memória (a coleta usa no máximo 6 h); os outros são lidos sob demanda
+TOKEN_MEMORY = timedelta(hours=24)
+CANDLE_MEMORY = 300  # candles de 5 min por token (25 h); a análise usa 120 e a página do ativo, 200
+TOKEN_FIELDS = ("symbol", "name", "pair_address", "dex_id", "pair_created_at", "category", "last_seen", "active")
 
 
 class MarketService:
@@ -53,6 +57,11 @@ class MarketService:
         self.tier_counts = {"nivel1": 0, "nivel2": 0}
         self._recent: dict[int, deque[PairSnapshot]] = {}
         self._memory_since = utcnow()  # a memória tem todos os snapshots gravados a partir daqui
+        self._tokens: dict[int, Token] = {}
+        self._token_ids: dict[tuple[str, str], int] = {}
+        self._candles: dict[int, list[Candle]] = {}
+        self._security: dict[int, dict[str, SecurityReport]] = {}
+        self._load_tokens()
         self._load_recent()
 
     # ---------- diagnóstico ----------
@@ -77,12 +86,46 @@ class MarketService:
         getattr(log, "warning" if level in ("warn", "error") else "info")("%s: %s", kind, message)
 
     # ---------- armazenamento ----------
-    def _upsert_token(self, s, snap: PairSnapshot, via: str | None, now: datetime) -> Token:
-        tok = s.scalars(select(Token).where(Token.chain == snap.chain.value, Token.address == snap.token_address)).first()
+    # ---------- tokens na memória ----------
+    def _load_tokens(self) -> None:
+        with self.db.session() as s:
+            for tok in s.scalars(select(Token).where(Token.last_seen >= self._memory_since - TOKEN_MEMORY)):
+                self._keep_token(tok)
+
+    def _keep_token(self, tok: Token) -> None:
+        self._tokens[tok.id] = tok
+        self._token_ids[(tok.chain, tok.address)] = tok.id
+
+    def token(self, token_id: int) -> Token | None:
+        """Token da memória (objeto desligado do banco: só leitura; alterações passam por este serviço)."""
+        tok = self._tokens.get(token_id)
         if tok is None:
-            tok = Token(chain=snap.chain.value, address=snap.token_address, symbol=snap.symbol[:64], name=snap.name[:128],
-                        discovered_via=via, first_seen=now)
-            s.add(tok)
+            with self.db.session() as s:
+                tok = s.get(Token, token_id)
+            if tok is not None:
+                self._keep_token(tok)
+        return tok
+
+    def set_classification(self, token_id: int, cls: str, reasons: list[str]) -> str | None:
+        tok = self.token(token_id)
+        previous = tok.classification
+        with self.db.session() as s:
+            s.execute(update(Token).where(Token.id == token_id).values(classification=cls, class_reasons=reasons))
+        tok.classification = cls
+        tok.class_reasons = reasons
+        return previous
+
+    def forget_stale_tokens(self, now: datetime | None = None) -> None:
+        cutoff = (now or utcnow()) - TOKEN_MEMORY
+        for tid in [tid for tid, t in self._tokens.items() if t.last_seen < cutoff]:
+            tok = self._tokens.pop(tid)
+            self._token_ids.pop((tok.chain, tok.address), None)
+            self._candles.pop(tid, None)
+            self._security.pop(tid, None)
+            self._recent.pop(tid, None)
+
+    @staticmethod
+    def _apply_snapshot(tok: Token, snap: PairSnapshot, now: datetime) -> None:
         if snap.symbol and not tok.symbol:
             tok.symbol = snap.symbol[:64]
         if snap.name and (not tok.name or tok.name == tok.symbol):
@@ -94,22 +137,40 @@ class MarketService:
         tok.category = categorize(tok.pair_created_at, snap.liquidity_usd, now)
         tok.last_seen = now
         tok.active = True
-        s.flush()
-        return tok
 
     def _store_snapshot(self, s, token_id: int, snap: PairSnapshot) -> None:
         s.add(Snapshot(token_id=token_id, observed_at=snap.observed_at, source=snap.source, price_usd=snap.price_usd,
                        liquidity_usd=snap.liquidity_usd, reliability=snap.reliability, data=snap.model_dump(mode="json")))
 
     def _store_many(self, snaps: list[PairSnapshot], via: str) -> None:
+        """Grava snapshots e atualiza os tokens sem relê-los: os conhecidos são atualizados em lote pela chave."""
         now = utcnow()
-        stored = []
+        stored, new_tokens, changed = [], {}, {}
         with self.db.session() as s:
             for snap in snaps:
-                tok = self._upsert_token(s, snap, via, now)
+                key = (snap.chain.value, snap.token_address)
+                tid = self._token_ids.get(key)
+                if tid is not None and tid in self._tokens:
+                    tok = self._tokens[tid]
+                    self._apply_snapshot(tok, snap, now)
+                    changed[tid] = {"id": tid, **{f: getattr(tok, f) for f in TOKEN_FIELDS}}
+                else:
+                    tok = new_tokens.get(key) or s.scalars(
+                        select(Token).where(Token.chain == key[0], Token.address == key[1])).first()
+                    if tok is None:
+                        tok = Token(chain=key[0], address=key[1], symbol=snap.symbol[:64], name=snap.name[:128],
+                                    discovered_via=via, first_seen=now)
+                        s.add(tok)
+                    self._apply_snapshot(tok, snap, now)
+                    s.flush()
+                    new_tokens[key] = tok
                 self._store_snapshot(s, tok.id, snap)
                 stored.append((tok.id, snap))
-        for token_id, snap in stored:  # só depois de gravado no banco
+            if changed:
+                s.execute(update(Token), list(changed.values()))
+        for tok in new_tokens.values():  # só depois de gravado no banco
+            self._keep_token(tok)
+        for token_id, snap in stored:
             self._remember(token_id, snap)
 
     def _load_recent(self) -> None:
@@ -156,17 +217,14 @@ class MarketService:
 
     async def refresh_tier1(self) -> int:
         now = utcnow()
+        recent = sorted((t for t in self._tokens.values()
+                         if t.active and t.last_seen >= now - TIER1_WINDOW and t.classification != "C"),
+                        key=lambda t: t.last_seen, reverse=True)[:TIER1_MAX]
         with self.db.session() as s:
-            rows = s.execute(
-                select(Token.chain, Token.address)
-                .where(Token.active.is_(True), Token.last_seen >= now - TIER1_WINDOW, Token.classification.is_distinct_from("C"))
-                .order_by(Token.last_seen.desc())
-                .limit(TIER1_MAX)
-            ).all()
-            open_rows = s.execute(select(Token.chain, Token.address).where(Token.id.in_(self._held_token_ids(s)))).all()
+            held = self._held_token_ids(s)
         by_chain: dict[str, set[str]] = defaultdict(set)
-        for chain, addr in [*rows, *open_rows]:
-            by_chain[chain].add(addr)
+        for t in [*recent, *filter(None, map(self.token, held))]:
+            by_chain[t.chain].add(t.address)
         updated = 0
         for chain, addrs in by_chain.items():
             try:
@@ -196,25 +254,30 @@ class MarketService:
         limit = int(cfg["data.tier2_max_assets"])
         min_liq = {"established": cfg["market.min_liquidity_established"], "intermediate": cfg["market.min_liquidity_established"],
                    "new": cfg["market.min_liquidity_new"]}
+        toks = [t for t in self._tokens.values() if t.active and t.last_seen >= now - FRESH_FOR_TIER2]
         with self.db.session() as s:
-            toks = s.scalars(select(Token).where(Token.active.is_(True), Token.last_seen >= now - FRESH_FOR_TIER2)).all()
             held = set(self._held_token_ids(s))
-            ranked = []
-            for t in toks:
-                snap = self.latest_snapshot(t.id, s)
-                if snap is None or snap.liquidity_usd is None:
+        ranked = []
+        for t in toks:
+            snap = self.latest_snapshot(t.id)
+            if snap is None or snap.liquidity_usd is None:
+                continue
+            if t.id not in held:
+                if t.classification == "C" or snap.liquidity_usd < min_liq.get(t.category or "intermediate", 50_000):
                     continue
-                if t.id not in held:
-                    if t.classification == "C" or snap.liquidity_usd < min_liq.get(t.category or "intermediate", 50_000):
-                        continue
-                    if not snap.volume.get("h1"):
-                        continue
-                ranked.append((t.id in held, snap.volume.get("h1", 0), t))
-            ranked.sort(key=lambda r: (r[0], r[1]), reverse=True)
-            chosen = [t for _, _, t in ranked[:limit]]
-            chosen_ids = {t.id for t in chosen}
-            for t in toks:
-                t.tier = 2 if t.id in chosen_ids else 1
+                if not snap.volume.get("h1"):
+                    continue
+            ranked.append((t.id in held, snap.volume.get("h1", 0), t))
+        ranked.sort(key=lambda r: (r[0], r[1]), reverse=True)
+        chosen = [t for _, _, t in ranked[:limit]]
+        chosen_ids = {t.id for t in chosen}
+        tiers = [{"id": t.id, "tier": 2 if t.id in chosen_ids else 1} for t in toks]
+        tiers = [x for x in tiers if self._tokens[x["id"]].tier != x["tier"]]
+        if tiers:
+            with self.db.session() as s:
+                s.execute(update(Token), tiers)
+            for x in tiers:
+                self._tokens[x["id"]].tier = x["tier"]
         self.tier_counts["nivel2"] = len(chosen)
         return chosen
 
@@ -235,6 +298,9 @@ class MarketService:
                     break  # respeita o limite do provedor
                 continue
             self.db.upsert_candles(t.id, "5m", candles, "geckoterminal")
+            if t.id in self._candles:
+                merged = {c.ts: c for c in self._candles[t.id]} | {c.ts: c for c in candles}
+                self._candles[t.id] = sorted(merged.values(), key=lambda c: c.ts)[-CANDLE_MEMORY:]
             self._candles_at[t.id] = utcnow()
             done += 1
         return done
@@ -260,6 +326,7 @@ class MarketService:
                 continue
             with self.db.session() as s:
                 s.add(SecurityReportRow(token_id=token.id, source=name, observed_at=rep.observed_at, data=rep.model_dump(mode="json")))
+            self._security.setdefault(token.id, {})[name] = rep
         return self.latest_security(token.id)
 
     # ---------- leitura ----------
@@ -287,14 +354,22 @@ class MarketService:
             return [PairSnapshot.model_validate(r.data) for r in rows]
 
     def candles_df(self, token_id: int, limit: int = 120) -> pd.DataFrame:
-        with self.db.session() as s:
-            rows = s.scalars(
-                select(CandleRow).where(CandleRow.token_id == token_id, CandleRow.tf == "5m").order_by(CandleRow.ts.desc()).limit(limit)
-            ).all()
-            candles = [Candle(ts=r.ts, open=r.open, high=r.high, low=r.low, close=r.close, volume=r.volume) for r in rows]
-        return candles_to_frame(sorted(candles, key=lambda c: c.ts))
+        candles = self._candles.get(token_id)
+        if candles is None or limit > CANDLE_MEMORY:
+            with self.db.session() as s:
+                rows = s.scalars(
+                    select(CandleRow).where(CandleRow.token_id == token_id, CandleRow.tf == "5m")
+                    .order_by(CandleRow.ts.desc()).limit(max(limit, CANDLE_MEMORY))
+                ).all()
+                candles = sorted((Candle(ts=r.ts, open=r.open, high=r.high, low=r.low, close=r.close, volume=r.volume)
+                                  for r in rows), key=lambda c: c.ts)
+            if limit <= CANDLE_MEMORY:
+                self._candles[token_id] = candles
+        return candles_to_frame(candles[-limit:])
 
     def latest_security(self, token_id: int) -> list[SecurityReport]:
+        if token_id in self._security:
+            return list(self._security[token_id].values())
         with self.db.session() as s:
             rows = s.scalars(
                 select(SecurityReportRow).where(SecurityReportRow.token_id == token_id).order_by(SecurityReportRow.observed_at.desc()).limit(10)
@@ -302,19 +377,18 @@ class MarketService:
             latest: dict[str, SecurityReport] = {}
             for r in rows:
                 latest.setdefault(r.source, SecurityReport.model_validate(r.data))
+        self._security[token_id] = latest
         return list(latest.values())
 
     def market_regime(self, now: datetime | None = None) -> float:
         """Fração da liquidez monitorada com variação positiva em 1 h (0–1)."""
         now = now or utcnow()
         up = total = 0.0
-        with self.db.session() as s:
-            ids = s.scalars(select(Token.id).where(Token.last_seen >= now - FRESH_FOR_TIER2)).all()
-            for tid in ids:
-                snap = self.latest_snapshot(tid, s)
-                if snap is None or not snap.liquidity_usd or "h1" not in snap.price_change:
-                    continue
-                total += snap.liquidity_usd
-                if snap.price_change["h1"] > 0:
-                    up += snap.liquidity_usd
+        for tid in [t.id for t in self._tokens.values() if t.last_seen >= now - FRESH_FOR_TIER2]:
+            snap = self.latest_snapshot(tid)
+            if snap is None or not snap.liquidity_usd or "h1" not in snap.price_change:
+                continue
+            total += snap.liquidity_usd
+            if snap.price_change["h1"] > 0:
+                up += snap.liquidity_usd
         return up / total if total else 0.5

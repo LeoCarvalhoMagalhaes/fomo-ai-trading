@@ -311,11 +311,7 @@ class AnalysisEngine:
                    stop=c.signal.stop, target1=c.signal.target1, target2=c.signal.target2, note="Execução simulada automática")
 
     async def _update_classification(self, token: Token, cls: str, reasons: list[str], snap) -> None:
-        with self.db.session() as s:
-            row = s.get(Token, token.id)
-            previous = row.classification
-            row.classification = cls
-            row.class_reasons = reasons
+        previous = self.market.set_classification(token.id, cls, reasons)
         if cls == "A" and previous != "A":
             await self.notifier.notify("novo_token", f"novo:{token.id}", f"Novo token classe A: {token.symbol}",
                                        f"{CHAINS[Chain(token.chain)].label}, liquidez US$ {snap.liquidity_usd or 0:,.0f}. "

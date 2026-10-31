@@ -42,6 +42,7 @@ class FakeGecko:
     def __init__(self):
         self.health = ProviderHealth("geckoterminal")
         self.fail = False
+        self.ohlcv_shift = 0.0
 
     async def new_pools(self, chain):
         if self.fail:
@@ -55,8 +56,9 @@ class FakeGecko:
 
     async def ohlcv(self, chain, pool, aggregate=5, limit=100):
         t0 = now().replace(second=0, microsecond=0) - timedelta(minutes=5 * 80)
-        return [Candle(ts=t0 + timedelta(minutes=5 * i), open=0.9 + i * 0.001, high=0.91 + i * 0.001,
-                       low=0.89 + i * 0.001, close=0.9 + i * 0.001, volume=1000) for i in range(80)]
+        k = self.ohlcv_shift
+        return [Candle(ts=t0 + timedelta(minutes=5 * i), open=k + 0.9 + i * 0.001, high=k + 0.91 + i * 0.001,
+                       low=k + 0.89 + i * 0.001, close=k + 0.9 + i * 0.001, volume=1000) for i in range(80)]
 
     async def token_info(self, chain, address):
         return SecurityReport(chain=chain, token_address=address, source="geckoterminal", observed_at=now(),
