@@ -129,14 +129,17 @@ class AnalysisEngine:
         now = utcnow()
         blocked = self.market.data_blocked(now)
         if blocked:
+            # o ciclo pode ter esperado outro terminar: atualiza os preços antes de declarar dados obsoletos
+            await self.market.refresh_tier1()
+            now = utcnow()
+            blocked = self.market.data_blocked(now)
+        if blocked:
             self.state = "BLOQUEADO"
             await self.notifier.notify("falha_coleta", "falha_coleta", "Coleta de dados com falha",
                                        f"Recomendações bloqueadas: {blocked}.", severity="alta")
             return self._finish(cycle_id, kind, 0, 0, 0, 0, f"BLOQUEADO — {blocked}. Nenhuma recomendação é emitida sem dados.")
 
-        tokens = self.market.tier2_tokens(now)
-        if kind == "full":
-            await self.market.refresh_candles(tokens)
+        tokens = self.market.tier2_tokens(now)  # candles: a tarefa contínua cuida, dentro do orçamento do provedor
 
         limits = RiskLimits.from_settings(cfg)
         weights = {k: float(cfg[f"score.weight.{k}"]) for k in SCORE_COMPONENTS}

@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 TIER1_WINDOW = timedelta(hours=6)
 TIER1_MAX = 240
-CANDLE_REFRESH = timedelta(minutes=4)
+CANDLE_REFRESH = timedelta(minutes=5)
 SECURITY_MAX_AGE = timedelta(minutes=30)
 FRESH_FOR_TIER2 = timedelta(minutes=5)
 
@@ -208,7 +208,11 @@ class MarketService:
         reports = self.latest_security(token.id)
         fresh = {r.source for r in reports if now - r.observed_at <= SECURITY_MAX_AGE}
         chain = Chain(token.chain)
-        for name, fetch in (("goplus", self.goplus.token_security), ("geckoterminal", self.gecko.token_info)):
+        sources = [("goplus", self.goplus.token_security)]
+        if token.category == "new":
+            # segunda fonte só para tokens novos (classe A exige confirmação); o GeckoTerminal tem orçamento curto
+            sources.append(("geckoterminal", self.gecko.token_info))
+        for name, fetch in sources:
             if name in fresh:
                 continue
             try:

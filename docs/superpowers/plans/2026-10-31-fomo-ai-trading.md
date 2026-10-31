@@ -14,7 +14,7 @@
 
 - Nunca acessar fomo.family; nunca armazenar credenciais da FOMO; nunca executar ordens.
 - Redes: solana, base, bsc, ethereum, monad, robinhood (IDs por provedor na seção 2 da spec).
-- Orçamentos: GeckoTerminal 10/min, DexScreener 60/min, GoPlus 20/min.
+- Orçamentos: GeckoTerminal 6/min (era 10; 429 observado ao vivo), DexScreener 60/min, GoPlus 20/min.
 - Limites padrão: capital 50; estabelecido 5–10; novo ≤ 5; exposição ≤ 15; novos ≤ 5; reserva ≥ 30; perda diária ≤ 2,50; 3 perdas seguidas → pausa de 2 h.
 - Recomendação exige nota ≥ 80, R:R líquido ≥ 1,5, alvo 1 líquido ≥ 2× custo de ida e volta, zero vetos.
 - Preço com mais de 120 s = obsoleto → bloqueia.

@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 244 246 249; --panel: 255 255 255; --panel2: 238 241 245; --line: 214 220 228;
+  --ink: 22 30 41; --mute: 100 112 128;
+  --up: 22 163 74; --down: 220 38 38; --warn: 202 138 4; --info: 2 132 199;
+}
+.dark {
+  --bg: 9 12 16; --panel: 16 21 28; --panel2: 22 29 38; --line: 33 43 56;
+  --ink: 214 222 232; --mute: 128 142 160;
+  --up: 34 197 94; --down: 239 68 68; --warn: 245 158 11; --info: 56 189 248;
+}
+body { min-height: 100vh; }
+.num { font-family: theme("fontFamily.mono"); font-variant-numeric: tabular-nums; }
+.card { @apply bg-panel border border-line rounded-lg; }
+.card-h { @apply px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-mute flex items-center justify-between gap-2; }
+.btn { @apply px-3 py-1.5 rounded-md text-sm border border-line bg-panel2 hover:border-info disabled:opacity-50 transition-colors; }
+.btn-primary { @apply px-3 py-1.5 rounded-md text-sm bg-info/90 text-white hover:bg-info disabled:opacity-50; }
+.input { @apply bg-panel2 border border-line rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-info w-full; }
+table.data { @apply w-full text-sm; }
+table.data th { @apply text-left text-xs uppercase tracking-wider text-mute font-medium px-3 py-2 border-b border-line whitespace-nowrap; }
+table.data td { @apply px-3 py-2 border-b border-line/60 align-top; }
+table.data tr:hover td { @apply bg-panel2/60; }

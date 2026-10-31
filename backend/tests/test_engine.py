@@ -195,3 +195,43 @@ async def test_execution_report_opens_real_trade_and_triggers_cycle():
         rec = s.get(Recommendation, rec_id)
     assert trade.ledger == "REAL" and trade.entry_price == 1.001 and rec.status == "EXECUTADA"
     assert engine.last_trigger == "execucao"
+
+
+async def test_quick_cycle_refreshes_stale_prices_instead_of_blocking():
+    db, market, engine, *_ = await build([])
+    market._last_fresh = now() - timedelta(minutes=10)
+    result = await engine.run_cycle("quick", "teste")
+    assert "BLOQUEADO" not in result.message
+
+
+async def test_gecko_security_only_for_new_tokens():
+    db, market, engine, dex, gecko = await build([])
+    calls = []
+    original = gecko.token_info
+
+    async def spy(chain, address):
+        calls.append(address)
+        return await original(chain, address)
+
+    gecko.token_info = spy
+    with db.session() as s:
+        tok = s.scalars(select(Token)).one()
+    await market.ensure_security(tok)
+    assert calls == []  # estabelecido: só GoPlus
+    tok.category = "new"
+    await market.ensure_security(tok)
+    assert calls == ["TOK"]
+
+
+async def test_full_cycle_does_not_fetch_candles():
+    db, market, engine, dex, gecko = await build([])
+    calls = []
+
+    async def spy(*a, **k):
+        calls.append(a)
+        return []
+
+    gecko.ohlcv = spy
+    market._candles_at.clear()  # candles vencidos: só a tarefa contínua deve buscá-los
+    await engine.run_cycle("full", "teste")
+    assert calls == []

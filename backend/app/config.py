@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     db_url: str | None = None
     host: str = "127.0.0.1"
     port: int = 8765
-    gecko_rpm: int = 10
+    # API pública: limite dinâmico (~5–15/min, HTTP 429 observado a 10/min em 31/10/2026). Com chave Demo grátis: suba para 25.
+    gecko_rpm: int = 6
     dex_rpm: int = 60
     goplus_rpm: int = 20
     coingecko_demo_key: str | None = None
@@ -61,7 +62,7 @@ DEFAULT_RUNTIME: dict[str, object] = {
     "rec.horizon_minutes": 60,
     # Dados
     "data.max_price_age_s": 120,
-    "data.tier2_max_assets": 40,
+    "data.tier2_max_assets": 20,
     # Filtros de mercado (spec 3.2)
     "market.min_liquidity_established": 50_000,
     "market.min_liquidity_new": 15_000,

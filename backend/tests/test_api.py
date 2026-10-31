@@ -95,7 +95,7 @@ def test_pause_resume(client):
 def test_providers_and_logs(client):
     prov = client.get("/api/providers").json()
     assert {p["name"] for p in prov["providers"]} == {"dexscreener", "geckoterminal", "goplus"}
-    assert prov["budgets"]["geckoterminal"] == 10
+    assert prov["budgets"]["geckoterminal"] == 6
     assert client.get("/api/logs").status_code == 200
 
 
