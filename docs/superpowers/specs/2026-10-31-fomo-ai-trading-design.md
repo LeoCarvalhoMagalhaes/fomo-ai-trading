@@ -185,7 +185,9 @@ O stop nunca fica a menos de 2× o custo total de ida e volta. Se ficaria, a ope
 
 ### 3.6 Custos
 
-Por lado: taxa FOMO (configurável, padrão 1,0%, porque a FOMO só mostra a taxa na confirmação),
+Por lado: taxa FOMO = máx(0,5% do valor, US$ 0,50) — fontes não oficiais (out/2026) citam 0,5% com taxa
+mínima em ordens pequenas (até US$ 0,50 na Solana, ~US$ 0,95 em outras redes); configurável porque a FOMO só
+mostra a taxa na confirmação. Com US$ 5–10 a taxa mínima vira 5–10% por lado e domina o custo;
 taxa de pool (padrão 0,3%), impacto de preço estimado = valor / (liquidez / 2), slippage base 0,5%.
 Gás por operação (configurável, padrão): Solana US$ 0,01, Base 0,02, BSC 0,05, Monad 0,02,
 Robinhood 0,02, Ethereum 1,50. Custo total ida e volta em % do valor entra em todas as contas de

@@ -51,6 +51,7 @@ DEFAULT_RUNTIME: dict[str, object] = {
     "risk.loss_streak_pause_hours": 2,
     "risk.dedupe_minutes": 60,
     "risk.max_impact_pct": 0.5,
+    "risk.new_min_usd": 2,
     # Recomendações (spec 3.7 e 4.2)
     "rec.min_score": 80,
     "rec.min_net_rr": 1.5,
@@ -65,7 +66,9 @@ DEFAULT_RUNTIME: dict[str, object] = {
     "market.min_liquidity_established": 50_000,
     "market.min_liquidity_new": 15_000,
     # Custos (spec 3.6)
-    "cost.fomo_fee_pct": 1.0,
+    # FOMO: 0,5% por operação com mínimo por ordem pequena (fontes não oficiais, out/2026). Confira no app.
+    "cost.fomo_fee_pct": 0.5,
+    "cost.fomo_min_fee_usd": 0.5,
     "cost.pool_fee_pct": 0.3,
     "cost.base_slippage_pct": 0.5,
     **{f"cost.gas_usd.{chain.value}": info.default_gas_usd for chain, info in CHAINS.items()},
