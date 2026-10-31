@@ -82,7 +82,7 @@ Verificado ao vivo em 31/10/2026:
 | GeckoTerminal API v2 (`api.geckoterminal.com/api/v2`, sem chave) | `new_pools` por rede (pools das últimas 48 h), `trending_pools`, OHLCV 1/5/15 min (até 1000 candles), `tokens/{addr}/info` (holders top 10, mint/freeze, honeypot) | ~10 chamadas/min (documentado no plano gratuito). Orçamento: 10/min, configurável |
 | DexScreener (`api.dexscreener.com`, sem chave) | `tokens/v1/{chain}/{até 30 endereços}` para preço, liquidez, volume, compras/vendas por janela (m5, h1, h6, h24), `pairCreatedAt`, fdv, market cap | 300/min nos endpoints de pares e tokens. Orçamento: 60/min |
 | GoPlus (`api.gopluslabs.io`, sem chave) | `token_security/{chain_id}` (EVM) e `solana/token_security` | Cota gratuita; orçamento de 20/min |
-| RugCheck (opcional, chave gratuita do usuário) | relatório de risco Solana | só candidatos Solana |
+| RugCheck | **fora do MVP**: o endpoint público `v1/tokens/{mint}/report/summary` respondeu HTTP 400 "unable to generate report" em 31/10/2026 para tokens válidos | — |
 
 Termos: a DexScreener permite uso comercial e não comercial, proíbe revender o acesso ou repassar os
 dados a terceiros. Uso pessoal local é compatível. Atribuição: o app mostra a fonte de cada dado.
@@ -116,7 +116,7 @@ vazio e diferente de 0x000…000/0x…dead); com owner renunciado viram penalida
 reais (PEPE, owner renunciado) trazem `transfer_pausable=1` e `is_blacklisted=1` sem ninguém capaz
 de usar essas funções.
 
-Solana (GoPlus `solana/token_security`, GeckoTerminal `tokens/{addr}/info`, RugCheck opcional):
+Solana (GoPlus `solana/token_security` + GeckoTerminal `tokens/{addr}/info`):
 `freezable.status=1` ou `freeze_authority=yes`; `balance_mutable_authority.status=1`;
 `non_transferable=1`; `transfer_fee` > 5%; `transfer_hook` não vazio em token novo; honeypot
 reportado (`is_honeypot=yes`); em token novo, `mintable.status=1` ou `mint_authority=yes`.
@@ -307,7 +307,7 @@ execução real por um período definido, com verificação de erros no log.
 
 ### 5.6 Custos e riscos técnicos
 
-Custo: US$ 0. Riscos: limite de 10/min do GeckoTerminal restringe a profundidade; provedores mudam
+Custo: US$ 0. Riscos: RugCheck indisponível (segunda fonte Solana = GeckoTerminal); limite de 10/min do GeckoTerminal restringe a profundidade; provedores mudam
 APIs sem aviso (adaptadores isolados + testes de contrato); dados de holders em beta; preço e taxa
 da FOMO diferentes dos de DEX; custos de ida e volta podem tornar a estratégia sem expectativa
 positiva — o sistema deve mostrar isso se acontecer; resolução de 60 s no acompanhamento.
