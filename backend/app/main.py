@@ -9,9 +9,12 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api.auth import PUBLIC_PATHS, bearer, token_ok
+from app.api.auth import router as auth_router
 from app.api.routes import router
 from app.api.ws import WSManager
 from app.collector.scheduler import Scheduler
@@ -40,7 +43,7 @@ class JsonFormatter(logging.Formatter):
                            **({"exc": self.formatException(record.exc_info)} if record.exc_info else {})}, ensure_ascii=False)
 
 
-def setup_logging(data_dir: Path) -> None:
+def setup_logging(data_dir: Path, stdout: bool = False) -> None:
     log_dir = data_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     root = logging.getLogger()
@@ -50,6 +53,10 @@ def setup_logging(data_dir: Path) -> None:
     handler.setFormatter(JsonFormatter())
     handler._fomo = True
     root.addHandler(handler)
+    if stdout:  # no Render, o painel mostra a saída padrão
+        console = logging.StreamHandler()
+        console.setFormatter(JsonFormatter())
+        root.addHandler(console)
     root.setLevel(logging.INFO)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -58,6 +65,8 @@ def create_app(start_background: bool = True, db_url: str | None = None, setting
     settings = settings or Settings()
     if db_url:
         settings.db_url = db_url
+    if settings.env == "production" and not settings.password:
+        raise RuntimeError("Em produção defina FOMOAI_PASSWORD: sem senha, qualquer pessoa veria e alteraria a carteira")
     db = Database(settings.database_url())
     runtime = RuntimeSettings(db)
     ws = WSManager()
@@ -79,7 +88,7 @@ def create_app(start_background: bool = True, db_url: str | None = None, setting
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if start_background:
-            setup_logging(settings.data_dir)
+            setup_logging(settings.data_dir, stdout=settings.env == "production")
             market.log_event("info", "sistema", "Aplicação iniciada")
             scheduler.start()
         yield
@@ -88,6 +97,15 @@ def create_app(start_background: bool = True, db_url: str | None = None, setting
 
     app = FastAPI(title="FOMO AI Trading Intelligence", lifespan=lifespan)
     allowed_origins = {f"http://{h}:{p}" for h in ("127.0.0.1", "localhost") for p in (settings.port, 5320)}
+    allowed_origins |= set(settings.cors_list())
+
+    @app.middleware("http")
+    async def require_password(request: Request, call_next):
+        path = request.url.path
+        if (settings.password and path.startswith("/api/") and path not in PUBLIC_PATHS
+                and request.method != "OPTIONS" and not token_ok(settings.password, bearer(request))):
+            return JSONResponse({"detail": "Faça login"}, status_code=401)
+        return await call_next(request)
 
     @app.middleware("http")
     async def same_origin_only(request: Request, call_next):
@@ -96,6 +114,11 @@ def create_app(start_background: bool = True, db_url: str | None = None, setting
         if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin not in allowed_origins:
             return JSONResponse({"detail": "Origem não permitida"}, status_code=403)
         return await call_next(request)
+
+    # Adicionado por último para envolver os outros: até um 401 sai com o cabeçalho CORS e o site consegue lê-lo
+    if settings.cors_list():
+        app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list(), allow_methods=["*"],
+                           allow_headers=["authorization", "content-type"])
     app.state.settings = settings
     app.state.db = db
     app.state.runtime = runtime
@@ -104,12 +127,13 @@ def create_app(start_background: bool = True, db_url: str | None = None, setting
     app.state.engine = engine
     app.state.notifier = notifier
     app.state.scheduler = scheduler
+    app.include_router(auth_router)
     app.include_router(router)
 
     @app.websocket("/ws")
     async def websocket(sock: WebSocket):
         origin = sock.headers.get("origin")
-        if origin and origin not in allowed_origins:
+        if (origin and origin not in allowed_origins) or not token_ok(settings.password, sock.query_params.get("token")):
             await sock.close(code=1008)
             return
         await ws.connect(sock)

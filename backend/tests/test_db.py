@@ -6,10 +6,11 @@ from app.db.models import AuditLog, Candle as CandleRow, Token
 from app.db.runtime_settings import RuntimeSettings
 from app.db.session import Database
 from app.domain import Candle
+from tests.conftest import test_db_url
 
 
 def make_db():
-    return Database("sqlite:///:memory:")
+    return Database(test_db_url())
 
 
 def test_settings_change_is_audited():

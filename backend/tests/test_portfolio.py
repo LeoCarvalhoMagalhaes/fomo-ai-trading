@@ -7,13 +7,13 @@ from app.db.session import Database
 from app.portfolio.ledger import book_state, close_trade, open_trade
 from app.portfolio.metrics import compute_metrics
 from app.risk.manager import RiskLimits
-from tests.conftest import NOW
+from tests.conftest import NOW, test_db_url
 
 LIMITS = RiskLimits.from_settings(DEFAULT_RUNTIME)
 
 
 def setup():
-    db = Database("sqlite:///:memory:")
+    db = Database(test_db_url())
     with db.session() as s:
         t = Token(chain="solana", address="TOK", symbol="TOK", name="Tok")
         s.add(t)

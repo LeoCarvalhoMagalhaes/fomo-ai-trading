@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
-import { api, Json } from "./api";
+import { api, getToken, Json, setToken } from "./api";
 import { Badge } from "./components/ui";
 import { formatAge } from "./format";
 import { useApi, useConnection, useLiveEvents } from "./live";
@@ -111,6 +111,9 @@ export default function App() {
           <span className={`text-xs ${online ? "text-up" : "text-down"}`}>{online ? "● ao vivo" : "● desconectado"}</span>
           <button className="btn" onClick={togglePause}>{dash?.paused ? "Retomar" : "Pausar"} monitoramento</button>
           <button className="btn" onClick={() => setDark(!dark)} title="Alternar tema">{dark ? "☀" : "☾"}</button>
+          {getToken() && (
+            <button className="btn" onClick={() => { setToken(null); location.reload(); }} title="Sair deste navegador">Sair</button>
+          )}
         </header>
         <main className="p-4 max-w-[1500px] mx-auto">
           <Routes>

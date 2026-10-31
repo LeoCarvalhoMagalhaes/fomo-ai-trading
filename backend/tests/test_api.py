@@ -6,11 +6,12 @@ from fastapi.testclient import TestClient
 from app.db.models import AuditLog, Recommendation, Token
 from app.db.models import utcnow
 from app.main import create_app
+from tests.conftest import test_db_url
 
 
 @pytest.fixture
 def client():
-    app = create_app(start_background=False, db_url="sqlite:///:memory:")
+    app = create_app(start_background=False, db_url=test_db_url())
     with TestClient(app) as c:
         yield c
 

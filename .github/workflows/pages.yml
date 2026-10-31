@@ -1,0 +1,59 @@
+# Publica a interface no GitHub Pages (https://<usuário>.github.io/fomo-ai-trading/).
+# O servidor roda à parte, no Render (docs/publicacao.md). Antes do primeiro deploy, defina a
+# variável do repositório API_BASE_URL com a URL do servidor, sem barra no final:
+#   gh variable set API_BASE_URL --body https://fomo-ai-trading.onrender.com
+name: GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Confere a URL do servidor
+        run: |
+          if [ -z "${{ vars.API_BASE_URL }}" ]; then
+            echo "::error::Defina a variável do repositório API_BASE_URL (URL pública do servidor no Render)."
+            exit 1
+          fi
+      - name: Build
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
+          # O Pages serve o site numa subpasta e não reescreve rotas para o index.html
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_ROUTER: hash
+        run: |
+          npm ci
+          npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

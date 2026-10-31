@@ -5,7 +5,7 @@ Nível 2: até N ativos pré-selecionados recebem candles de 5 min e checagem de
 Todo dado gravado carrega horário, origem e confiabilidade.
 """
 import logging
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -34,6 +34,11 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# Preços recentes guardados na memória: o banco online cobra tráfego de saída, e o ciclo rápido lê os mesmos
+# snapshots a cada minuto. Cobre a janela de histórico das estratégias (30 min) e a apuração de resultados (60 min).
+RECENT_WINDOW = timedelta(minutes=90)
+
+
 class MarketService:
     def __init__(self, db: Database, dex, gecko, goplus, runtime: RuntimeSettings):
         self.db = db
@@ -46,6 +51,9 @@ class MarketService:
         self._last_fresh: datetime | None = None
         self._candles_at: dict[int, datetime] = {}
         self.tier_counts = {"nivel1": 0, "nivel2": 0}
+        self._recent: dict[int, deque[PairSnapshot]] = {}
+        self._memory_since = utcnow()  # a memória tem todos os snapshots gravados a partir daqui
+        self._load_recent()
 
     # ---------- diagnóstico ----------
     def health_list(self):
@@ -95,10 +103,38 @@ class MarketService:
 
     def _store_many(self, snaps: list[PairSnapshot], via: str) -> None:
         now = utcnow()
+        stored = []
         with self.db.session() as s:
             for snap in snaps:
                 tok = self._upsert_token(s, snap, via, now)
                 self._store_snapshot(s, tok.id, snap)
+                stored.append((tok.id, snap))
+        for token_id, snap in stored:  # só depois de gravado no banco
+            self._remember(token_id, snap)
+
+    def _load_recent(self) -> None:
+        """Ao iniciar, uma consulta traz a última janela; depois disso os preços recentes saem da memória."""
+        since = self._memory_since - RECENT_WINDOW
+        with self.db.session() as s:
+            rows = s.execute(select(Snapshot.token_id, Snapshot.data).where(Snapshot.observed_at >= since)
+                             .order_by(Snapshot.observed_at)).all()
+        for token_id, data in rows:
+            self._remember(token_id, PairSnapshot.model_validate(data))
+        self._memory_since = since
+
+    def _remember(self, token_id: int, snap: PairSnapshot) -> None:
+        dq = self._recent.setdefault(token_id, deque())
+        dq.append(snap)
+        if len(dq) > 1 and dq[-2].observed_at > snap.observed_at:
+            self._recent[token_id] = dq = deque(sorted(dq, key=lambda x: x.observed_at))
+        while dq[0].observed_at < dq[-1].observed_at - RECENT_WINDOW:
+            dq.popleft()
+
+    def _memory_covers(self, token_id: int, since: datetime) -> bool:
+        if since < self._memory_since:
+            return False
+        dq = self._recent.get(token_id)
+        return not dq or since >= dq[-1].observed_at - RECENT_WINDOW
 
     # ---------- coleta ----------
     async def discover(self, trending: bool = True) -> int:
@@ -123,7 +159,7 @@ class MarketService:
         with self.db.session() as s:
             rows = s.execute(
                 select(Token.chain, Token.address)
-                .where(Token.active.is_(True), Token.last_seen >= now - TIER1_WINDOW, Token.classification.is_not("C"))
+                .where(Token.active.is_(True), Token.last_seen >= now - TIER1_WINDOW, Token.classification.is_distinct_from("C"))
                 .order_by(Token.last_seen.desc())
                 .limit(TIER1_MAX)
             ).all()
@@ -228,6 +264,8 @@ class MarketService:
 
     # ---------- leitura ----------
     def latest_snapshot(self, token_id: int, s=None) -> PairSnapshot | None:
+        if self._recent.get(token_id):
+            return self._recent[token_id][-1]
         def q(sess):
             row = sess.scalars(select(Snapshot).where(Snapshot.token_id == token_id).order_by(Snapshot.observed_at.desc()).limit(1)).first()
             return PairSnapshot.model_validate(row.data) if row else None
@@ -238,6 +276,9 @@ class MarketService:
             return q(sess)
 
     def history(self, token_id: int, since: datetime, until: datetime | None = None) -> list[PairSnapshot]:
+        if self._memory_covers(token_id, since):
+            return [x for x in self._recent.get(token_id, ())
+                    if x.observed_at >= since and (until is None or x.observed_at <= until)]
         with self.db.session() as s:
             stmt = select(Snapshot).where(Snapshot.token_id == token_id, Snapshot.observed_at >= since)
             if until is not None:

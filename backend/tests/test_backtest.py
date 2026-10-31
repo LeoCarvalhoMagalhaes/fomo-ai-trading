@@ -78,9 +78,9 @@ def test_backtest_from_db_runs_on_recorded_candles():
     from app.db.models import Token
     from app.db.session import Database
     from app.domain import Candle
-    from tests.conftest import NOW
+    from tests.conftest import NOW, test_db_url
 
-    db = Database("sqlite:///:memory:")
+    db = Database(test_db_url())
     with db.session() as s:
         t = Token(chain="solana", address="X", symbol="X", name="X", category="established")
         s.add(t)
@@ -98,9 +98,9 @@ def test_filter_report_requires_200_test_samples():
     from app.backtest.report import filter_report
     from app.db.models import Evaluation, Token
     from app.db.session import Database
-    from tests.conftest import NOW
+    from tests.conftest import NOW, test_db_url
 
-    db = Database("sqlite:///:memory:")
+    db = Database(test_db_url())
     with db.session() as s:
         t = Token(chain="solana", address="X", symbol="X", name="X")
         s.add(t)

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, Json } from "./api";
+import { api, API_BASE, buildWsUrl, getToken, Json } from "./api";
 
 type Listener = (msg: Json) => void;
 const listeners = new Set<Listener>();
@@ -8,8 +8,7 @@ let connected = false;
 const statusListeners = new Set<(c: boolean) => void>();
 
 function connect() {
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  socket = new WebSocket(`${proto}://${location.host}/ws`);
+  socket = new WebSocket(buildWsUrl(API_BASE, location, getToken()));
   socket.onopen = () => {
     connected = true;
     statusListeners.forEach((l) => l(true));
@@ -27,6 +26,11 @@ function connect() {
     statusListeners.forEach((l) => l(false));
     setTimeout(connect, 3000); // reconexão automática
   };
+}
+
+/** Reabre a conexão ao vivo com o token novo (depois do login). */
+export function reconnectLive() {
+  socket?.close(); // o onclose agenda a reconexão
 }
 
 export function useLiveEvents(listener: Listener) {

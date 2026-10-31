@@ -3,11 +3,14 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
+from app.db.retention import prune_old_data
+
 log = logging.getLogger(__name__)
 
 
 class Scheduler:
-    def __init__(self, market, engine, quick_s=60, candles_s=30, discovery_s=900, full_s=3600, outcomes_s=300):
+    def __init__(self, market, engine, quick_s=60, candles_s=30, discovery_s=900, full_s=3600, outcomes_s=300,
+                 prune_s=3600):
         self.market = market
         self.engine = engine
         self.quick_s = quick_s
@@ -15,6 +18,7 @@ class Scheduler:
         self.discovery_s = discovery_s
         self.full_s = full_s
         self.outcomes_s = outcomes_s
+        self.prune_s = prune_s
         self.tasks: list[asyncio.Task] = []
         self.errors = 0
 
@@ -25,6 +29,7 @@ class Scheduler:
             "descoberta": (self._discovery, self.discovery_s),
             "completo": (self._full, self.full_s),
             "resultados": (self._outcomes, self.outcomes_s),
+            "limpeza": (self._prune, self.prune_s),
         }
         self.tasks = [asyncio.create_task(self._loop(name, fn, every), name=name) for name, (fn, every) in loops.items()]
 
@@ -65,3 +70,12 @@ class Scheduler:
 
     async def _outcomes(self) -> None:
         await self.engine.track_outcomes()
+
+    async def _prune(self) -> None:
+        rt = self.market.runtime
+        removed = await asyncio.to_thread(
+            prune_old_data, self.market.db, datetime.now(timezone.utc),
+            float(rt.get("data.retention_snapshots_hours")), float(rt.get("data.retention_candles_days")),
+            float(rt.get("data.retention_logs_days")))
+        if any(removed.values()):
+            log.info("limpeza de dados antigos: %s", removed)

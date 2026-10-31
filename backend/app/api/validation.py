@@ -27,6 +27,8 @@ def validate_changes(current: dict, changes: dict) -> dict:
     def g(k):
         return merged[k]
 
+    if g("data.retention_snapshots_hours") < 2 or g("data.retention_candles_days") < 1 or g("data.retention_logs_days") < 1:
+        raise SettingsError("A limpeza precisa manter pelo menos 2 h de preços e 1 dia de candles e de registros")
     if g("mode") not in ("SIM", "REAL"):
         raise SettingsError("Modo precisa ser SIM ou REAL")
     if g("risk.min_reserve_usd") >= g("risk.capital_usd"):

@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / ".env", env_prefix="FOMOAI_", extra="ignore")
 
     data_dir: Path = ROOT / "data"
+    # "production" no Render: exige senha e aceita a origem do GitHub Pages (cors_origins)
+    env: str = "local"
+    password: str | None = None
+    cors_origins: str = ""
     db_url: str | None = None
     host: str = "127.0.0.1"
     port: int = 8765
@@ -22,6 +26,9 @@ class Settings(BaseSettings):
     coingecko_demo_key: str | None = None
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+
+    def cors_list(self) -> list[str]:
+        return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
 
     def database_url(self) -> str:
         if self.db_url:
@@ -63,6 +70,10 @@ DEFAULT_RUNTIME: dict[str, object] = {
     # Dados
     "data.max_price_age_s": 120,
     "data.tier2_max_assets": 20,
+    # Limpeza automática (o banco gratuito online tem 500 MB); avaliações e operações nunca são apagadas
+    "data.retention_snapshots_hours": 48,
+    "data.retention_candles_days": 14,
+    "data.retention_logs_days": 30,
     # Filtros de mercado (spec 3.2)
     "market.min_liquidity_established": 50_000,
     "market.min_liquidity_new": 15_000,

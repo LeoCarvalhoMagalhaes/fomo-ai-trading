@@ -6,7 +6,7 @@ from app.db.models import Notification
 from app.db.session import Database
 from app.notify.channels import TelegramChannel
 from app.notify.hub import Notifier
-from tests.conftest import NOW
+from tests.conftest import NOW, test_db_url
 
 
 class Recorder:
@@ -28,7 +28,7 @@ class Broken(Recorder):
 
 
 def make():
-    db = Database("sqlite:///:memory:")
+    db = Database(test_db_url())
     rec = Recorder()
     return db, rec, Notifier(db, [Broken(), rec], dedupe_minutes=30)
 

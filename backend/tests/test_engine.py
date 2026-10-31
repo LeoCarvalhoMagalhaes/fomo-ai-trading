@@ -15,6 +15,7 @@ from app.providers.base import ProviderError, ProviderHealth
 from app.recommend.engine import AnalysisEngine
 from app.recommend.format import NO_TRADE_MESSAGE
 from app.strategy.base import Strategy
+from tests.conftest import test_db_url
 
 
 def now():
@@ -97,7 +98,7 @@ class AlwaysBuy(Strategy):
 
 
 async def build(strategies, min_score=0):
-    db = Database("sqlite:///:memory:")
+    db = Database(test_db_url())
     rs = RuntimeSettings(db)
     rs.set("rec.min_score", min_score, actor="teste")
     rs.set("cost.fomo_min_fee_usd", 0.0, actor="teste")
