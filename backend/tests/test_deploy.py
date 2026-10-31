@@ -111,3 +111,11 @@ def test_prune_old_data_keeps_recent_rows_and_evaluations():
         for model in (Snapshot, Candle, Event, Notification):
             assert s.scalar(select(func.count()).select_from(model)) == 1
         assert s.scalar(select(func.count()).select_from(Evaluation)) == 1  # resultados alimentam a calibração
+
+
+def test_production_hides_api_docs():
+    settings = Settings(_env_file=None, env="production", password="segredo")
+    with TestClient(create_app(start_background=False, db_url=test_db_url(), settings=settings)) as c:
+        # sem a documentação, esses caminhos caem na interface (ou em 404), nunca no esquema da API
+        assert "swagger" not in c.get("/docs").text.lower()
+        assert '"openapi"' not in c.get("/openapi.json").text

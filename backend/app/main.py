@@ -95,7 +95,9 @@ def create_app(start_background: bool = True, db_url: str | None = None, setting
         await scheduler.stop()
         await client.aclose()
 
-    app = FastAPI(title="FOMO AI Trading Intelligence", lifespan=lifespan)
+    hide_docs = settings.env == "production"  # online, a documentação automática da API não fica exposta
+    app = FastAPI(title="FOMO AI Trading Intelligence", lifespan=lifespan,
+                  **({"docs_url": None, "redoc_url": None, "openapi_url": None} if hide_docs else {}))
     allowed_origins = {f"http://{h}:{p}" for h in ("127.0.0.1", "localhost") for p in (settings.port, 5320)}
     allowed_origins |= set(settings.cors_list())
 
