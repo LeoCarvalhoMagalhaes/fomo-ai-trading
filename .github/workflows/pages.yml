@@ -1,7 +1,7 @@
 # Publica a interface no GitHub Pages (https://<usuário>.github.io/fomo-ai-trading/).
-# O servidor roda à parte, no Render (docs/publicacao.md). Antes do primeiro deploy, defina a
+# O servidor roda no PC (iniciar.bat) ou no Render (docs/publicacao.md). Antes do primeiro deploy, defina a
 # variável do repositório API_BASE_URL com a URL do servidor, sem barra no final:
-#   gh variable set API_BASE_URL --body https://fomo-ai-trading.onrender.com
+#   gh variable set API_BASE_URL --body http://127.0.0.1:8765   (servidor no PC)
 name: GitHub Pages
 
 on:
@@ -31,7 +31,7 @@ jobs:
       - name: Confere a URL do servidor
         run: |
           if [ -z "${{ vars.API_BASE_URL }}" ]; then
-            echo "::error::Defina a variável do repositório API_BASE_URL (URL pública do servidor no Render)."
+            echo "::error::Defina a variável do repositório API_BASE_URL (http://127.0.0.1:8765 para o servidor no PC)."
             exit 1
           fi
       - name: Build

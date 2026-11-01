@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildApiUrl, buildWsUrl } from "./api";
+import { buildApiUrl, buildWsUrl, serverOnThisPc } from "./api";
 
 describe("buildApiUrl", () => {
   it("sem servidor configurado usa o mesmo endereço do site", () => {
@@ -17,5 +17,14 @@ describe("buildWsUrl", () => {
   it("online: wss:// no servidor configurado, com o token", () => {
     expect(buildWsUrl("https://fomo-ai.onrender.com", { protocol: "https:", host: "x.github.io" }, "ab c"))
       .toBe("wss://fomo-ai.onrender.com/ws?token=ab%20c");
+  });
+});
+
+describe("serverOnThisPc", () => {
+  it("reconhece o servidor rodando no próprio computador", () => {
+    expect(serverOnThisPc("http://127.0.0.1:8765")).toBe(true);
+    expect(serverOnThisPc("http://localhost:8765")).toBe(true);
+    expect(serverOnThisPc("https://fomo-ai-trading.onrender.com")).toBe(false);
+    expect(serverOnThisPc("")).toBe(false);
   });
 });

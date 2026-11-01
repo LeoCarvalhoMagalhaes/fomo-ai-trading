@@ -55,7 +55,7 @@ Para rodar todos os testes, use **`testes.bat`**.
 Documentação completa:
 
 - [docs/uso.md](docs/uso.md): páginas, fluxo, configurações e resultado do teste prolongado.
-- [docs/publicacao.md](docs/publicacao.md): versão online (GitHub Pages + Render + Supabase), senha e limites gratuitos.
+- [docs/publicacao.md](docs/publicacao.md): site no GitHub Pages com o servidor no seu PC, e a alternativa online (Render + Supabase).
 - [docs/arquitetura.md](docs/arquitetura.md): módulos, fluxo de dados, banco e decisões de engenharia.
 - [docs/fontes-de-dados.md](docs/fontes-de-dados.md): provedores, termos, limites e o que ficou de fora.
 - [docs/superpowers/specs/](docs/superpowers/specs/): especificação de design.

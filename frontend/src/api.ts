@@ -12,6 +12,11 @@ export const API_BASE: string = import.meta.env.VITE_API_BASE_URL ?? "";
 const TOKEN_KEY = "fomo-token";
 export const LOGIN_REQUIRED = "fomo:login-required";
 
+/** Servidor rodando no próprio computador (iniciar.bat), e não num servidor online. */
+export function serverOnThisPc(base: string): boolean {
+  return /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(base);
+}
+
 export function buildApiUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, "")}/api${path}`;
 }

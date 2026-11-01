@@ -121,6 +121,14 @@ def create_app(start_background: bool = True, db_url: str | None = None, setting
     if settings.cors_list():
         app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list(), allow_methods=["*"],
                            allow_headers=["authorization", "content-type"])
+
+        @app.middleware("http")
+        async def allow_private_network(request: Request, call_next):
+            # O site no GitHub Pages (internet) chama o servidor neste PC (127.0.0.1); o Chrome pede essa licença
+            response = await call_next(request)
+            if request.headers.get("origin") in allowed_origins:
+                response.headers["Access-Control-Allow-Private-Network"] = "true"
+            return response
     app.state.settings = settings
     app.state.db = db
     app.state.runtime = runtime

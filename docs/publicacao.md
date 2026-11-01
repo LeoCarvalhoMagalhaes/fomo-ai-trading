@@ -1,8 +1,36 @@
-# Publicação online
+# Publicação
+
+Site: <https://leocarvalhomagalhaes.github.io/fomo-ai-trading/>
+
+## Modo atual: site no GitHub Pages, servidor no seu PC
+
+O GitHub Pages só serve arquivos estáticos (HTML, JavaScript, imagens). Ele não roda Python, não fica coletando preços e não guarda banco de dados. Por isso o site fica no Pages e o servidor roda no seu computador.
+
+| Peça | Onde |
+| --- | --- |
+| Interface (React) | GitHub Pages, workflow [`pages.yml`](../.github/workflows/pages.yml), compilada com `API_BASE_URL=http://127.0.0.1:8765` |
+| Servidor e banco (FastAPI + SQLite) | Seu PC, aberto pelo `iniciar.bat` |
+
+Como usar:
+
+1. Rode o `iniciar.bat`. Ele sobe o servidor e abre o site do GitHub Pages no navegador.
+2. Deixe a janela do `iniciar.bat` aberta. Sem ela, o site mostra "Servidor não encontrado neste computador" e reconecta sozinho quando o servidor volta.
+3. Se o Chrome ou o Edge perguntar sobre **acesso à rede local**, permita. É o site do Pages pedindo para falar com o servidor em `127.0.0.1`.
+
+Limites deste modo:
+
+- Só funciona no computador onde o `iniciar.bat` está aberto. No celular ou em outro PC, o site abre mas não encontra o servidor.
+- A coleta para quando o PC desliga ou a janela fecha.
+- Os dados ficam só no seu PC (`data/fomo_ai.db`) e não há senha: o servidor só aceita conexões do próprio computador e só responde ao endereço local e ao site do GitHub Pages.
+- O endereço local <http://127.0.0.1:8765> continua funcionando e mostra a mesma interface.
+
+## Alternativa: servidor online (Render + Supabase)
+
+Para usar de qualquer lugar, inclusive no celular, o servidor precisa rodar num serviço online. Tudo abaixo já está pronto no código, mas **não está em uso**. Para ativar, siga o passo a passo e troque a variável do repositório `API_BASE_URL` para o endereço do Render.
 
 > Condições dos planos gratuitos consultadas em 31/10/2026. Elas mudam com frequência: confira as páginas oficiais.
 
-O app continua funcionando no PC com `iniciar.bat`. A versão online tem três peças:
+A versão online tem três peças:
 
 | Peça | Onde | Por quê |
 | --- | --- | --- |
@@ -10,7 +38,7 @@ O app continua funcionando no PC com `iniciar.bat`. A versão online tem três p
 | Servidor (FastAPI + coleta + análises) | **Render**, Web Service gratuito com Docker ([`Dockerfile`](../Dockerfile)) | Precisa ficar ligado para coletar preços a cada minuto. |
 | Banco (Postgres) | **Supabase**, plano gratuito | Guarda carteira, recomendações e histórico entre reinícios do servidor. |
 
-Site: `https://leocarvalhomagalhaes.github.io/fomo-ai-trading/`.
+
 
 ## Por que Supabase e não Neon
 

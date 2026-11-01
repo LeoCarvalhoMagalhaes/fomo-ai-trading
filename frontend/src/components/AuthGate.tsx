@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useState } from "react";
-import { api, ApiError, getToken, LOGIN_REQUIRED, setToken } from "../api";
+import { api, API_BASE, ApiError, getToken, LOGIN_REQUIRED, serverOnThisPc, setToken } from "../api";
 import { reconnectLive } from "../live";
 
 type State = "verificando" | "acordando" | "login" | "ok";
@@ -62,7 +62,14 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         {state === "verificando" && <div className="text-sm text-mute">Conectando ao servidor…</div>}
         {state === "acordando" && (
           <div className="text-sm text-mute">
-            Acordando o servidor… O plano gratuito desliga o servidor quando fica parado, e ele pode levar cerca de 1 minuto para voltar.
+            {serverOnThisPc(API_BASE) ? (
+              <>
+                Servidor não encontrado neste computador. Abra o <b>iniciar.bat</b> na pasta do projeto e deixe a janela aberta;
+                esta página conecta sozinha. Se o navegador perguntar sobre acesso à rede local, permita.
+              </>
+            ) : (
+              "Acordando o servidor… O plano gratuito desliga o servidor quando fica parado, e ele pode levar cerca de 1 minuto para voltar."
+            )}
           </div>
         )}
         {state === "login" && (

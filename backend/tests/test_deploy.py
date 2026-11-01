@@ -119,3 +119,13 @@ def test_production_hides_api_docs():
         # sem a documentação, esses caminhos caem na interface (ou em 404), nunca no esquema da API
         assert "swagger" not in c.get("/docs").text.lower()
         assert '"openapi"' not in c.get("/openapi.json").text
+
+
+def test_github_pages_may_reach_the_server_on_this_pc():
+    """Site público (GitHub Pages) chamando o servidor em 127.0.0.1: o Chrome pede licença de rede local."""
+    with make_client(cors_origins=PAGES) as c:
+        headers = {"Origin": PAGES, "Access-Control-Request-Method": "GET",
+                   "Access-Control-Request-Private-Network": "true"}
+        assert c.options("/api/dashboard", headers=headers).headers.get("access-control-allow-private-network") == "true"
+        other = {**headers, "Origin": "https://evil.example"}
+        assert c.options("/api/dashboard", headers=other).headers.get("access-control-allow-private-network") is None
